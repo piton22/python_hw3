@@ -43,18 +43,18 @@ async def make_short_link(
     session: AsyncSession = Depends(get_async_session)
 ):
     # Проверка кастомного алиаса
-    if ShortenRequest.custom_alias:
+    if request.custom_alias:
         alias_exists = await session.scalar(
-            select(exists().where(and_(Link.short == ShortenRequest.custom_alias, Link.deleted.is_(False)))))
+            select(exists().where(and_(Link.short == request.custom_alias, Link.deleted.is_(False)))))
         if alias_exists:
             raise HTTPException(409, "Alias already exists")
-        short_url = f'/shrt/custom_alias'
+        short_url = f'/shrt/{request.custom_alias}'
     else:
         # Генерация уникального короткого кода
         max_attempts = 5
 
         for _ in range(max_attempts):
-            hash_url = hashlib.sha256(ShortenRequest.url.encode()).hexdigest()
+            hash_url = hashlib.sha256(request.url.encode()).hexdigest()
             short_hash = hash_url[:6]
             short_url = f'/shrt/{short_hash}'
             exists = await session.scalar(
@@ -65,11 +65,11 @@ async def make_short_link(
 
     # Обработка проекта
     project_id = None
-    if ShortenRequest.project:
+    if request.project:
         project_obj = await session.scalar(
-            select(Project).where(Project.name == ShortenRequest.project))
+            select(Project).where(Project.name == request.project))
         if not project_obj:
-            project_obj = Project(name=ShortenRequest.project, started_at=datetime.utcnow())
+            project_obj = Project(name=request.project, started_at=datetime.utcnow())
             session.add(project_obj)
             await session.commit()
             await session.refresh(project_obj)
@@ -77,10 +77,10 @@ async def make_short_link(
 
     # Создание ссылки
     new_link = Link(
-        url=ShortenRequest.url,
+        url=request.url,
         short=short_url,
         created_at=func.now(),
-        expires_at=ShortenRequest.expires_at,
+        expires_at=request.expires_at,
         project_id=project_id
     )
     session.add(new_link)

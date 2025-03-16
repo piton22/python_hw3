@@ -67,4 +67,41 @@ def test_all():
     except Exception as e:
         print(f"Test Failed: {str(e)}")
 
-test_all()
+# test_all()
+
+def test_shorten():
+    data = {
+        "url": TEST_URL,
+        "custom_alias": CUSTOM_ALIAS,
+        "expires_at": (datetime.now() + timedelta(days=7)).isoformat(),
+        "project": PROJECT_NAME
+    }
+    
+    try:
+        response = requests.post(
+            f"{BASE_URL}/shorten",
+            json=data,
+            timeout=5
+        )
+        response.raise_for_status()
+        print("Shorten Response:", response.json())
+    except requests.exceptions.RequestException as e:
+        print(f"Shorten Error: {str(e)}")
+        if e.response:
+            print("Response content:", e.response.text)
+
+def test_search():
+    try:
+        response = requests.get(
+            f"{BASE_URL}/search",
+            params={"original_url": TEST_URL},
+            timeout=5
+        )
+        response.raise_for_status()
+        print("Search Result:", response.json())
+    except requests.exceptions.RequestException as e:
+        print(f"Search Error: {str(e)}")
+        if e.response:
+            print("Response content:", e.response.text)
+
+test_shorten()
