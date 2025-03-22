@@ -4,13 +4,14 @@ psycopg2-binary>=2.9.9
 python-dotenv~=1.0.1
 sqlalchemy~=2.0.37
 fastapi-users[sqlalchemy]
-fastapi[all]
 uvicorn~=0.34.0
 asyncpg
-fastapi-cache2[redis]
-redis~=5.2.1
+fastapi-cache2==0.2.0 
+redis==4.5.5
 gunicorn
 celery~=5.4.0
 flower
 pydantic~=2.10.6
 starlette~=0.45.3
+aioredis==2.0.1
+fastapi[all]

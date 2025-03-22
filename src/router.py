@@ -7,11 +7,15 @@ from fastapi.responses import RedirectResponse
 import hashlib
 from datetime import datetime, timedelta, timezone
 from database import get_async_session
-from models import Link, LinkUsage, Project
-
+# from models import Link, LinkUsage, Project
+from models import Link, Project
 from pydantic import BaseModel, Field, constr
-
 from typing import Optional
+from fastapi_cache.decorator import cache
+from fastapi_cache import FastAPICache
+from redis import asyncio as aioredis
+# from fastapi_cache.backends.redis import RedisCacheBackend
+from src.config import REDIS_HOST, REDIS_PORT
 
 
 class ShortenRequest(BaseModel):
@@ -61,8 +65,14 @@ class ShortResponse(BaseModel):
                           example="abc123",
                           min_length=3,
                           max_length=64)
+    
 
 
+def get_cache_key(short_code: str):
+    return f"link:{short_code}"
+
+def get_stats_cache_key(short_code: str):
+    return f"stats:{short_code}"
 
 router = APIRouter(
     prefix="/links",
@@ -141,37 +151,41 @@ async def make_short_link(
 
 
 
-@router.get("/{short_code}")
+@router.get("/{short_code}", response_class=RedirectResponse)
+@cache(
+    expire=300,
+    namespace="redirects",
+    key_builder=lambda *args, **kwargs: get_cache_key(kwargs['short_code']),
+    unless=lambda response: response.cnt_usage <= 10
+)
 async def get_info(
     short_code: str = Path(..., min_length=3, max_length=64),
     session: AsyncSession = Depends(get_async_session)
 ):
-    async with session.begin():
-        link = await session.scalar(
-            select(Link)
-            .where(
-                and_(
-                    Link.short == short_code,
-                    Link.deleted.is_(False),
-                    or_(
-                        Link.expires_at > (datetime.utcnow() + timedelta(hours=3)),
-                        Link.expires_at.is_(None)
-                    )
+    redis = aioredis.from_url(f"redis://{REDIS_HOST}:{REDIS_PORT}")
+
+    link = await session.scalar(
+        select(Link)
+        .where(
+            and_(
+                Link.short == short_code,
+                Link.deleted.is_(False),
+                or_(
+                    Link.expires_at > (datetime.utcnow() + timedelta(hours=3)),
+                    Link.expires_at.is_(None)
                 )
             )
-            .with_for_update()
         )
-        if not link:
-            raise HTTPException(status_code=404, detail="Short link not found or expired")
+    )
 
-        # Обновление данных
-        link.cnt_usage += 1
-        link.last_usage = datetime.utcnow() + timedelta(hours=3) 
-        usage = LinkUsage(link_id=link.id, dt=datetime.utcnow() + timedelta(hours=3))
-        session.add(usage)
+    if not link:
+        raise HTTPException(status_code=404, detail="Short link not found or expired")
+
+    await redis.hincrby(f"link_stats:{short_code}", "hits", 1)
+    await redis.hset(f"link_stats:{short_code}", "last_used", (datetime.utcnow() + timedelta(hours=3)).isoformat())
+    await redis.expire(f"link_stats:{short_code}", 3600)
 
     return RedirectResponse(link.url, status_code=307)
-
 
 
 @router.delete("/{short_code}", response_model=StatusResponse)
@@ -199,6 +213,9 @@ async def delete_short(
         .values(deleted=True)
     )
     await session.commit()
+    redis_cache = FastAPICache.get_cache_backend()
+    await redis_cache.delete(get_cache_key(short_code))
+    await redis_cache.delete(get_stats_cache_key(short_code))
     
     return StatusResponse(status="success",
                           message= "Link has been deleted")
@@ -232,6 +249,10 @@ async def change_url(
     
     await session.execute(stmt)
     await session.commit()
+
+    redis_cache = FastAPICache.get_cache_backend()
+    await redis_cache.delete(get_cache_key(short_code))
+    await redis_cache.delete(get_stats_cache_key(short_code))
     
     return StatusResponse(status="success",
                           message= "Url has been updated")
@@ -256,19 +277,29 @@ async def search_short(
                 )
             )
         )
-        .limit(1))
+        .limit(1)
+    )
 
     result = await session.execute(stmt)
     short_code = result.scalar_one_or_none()
 
     if not short_code:
-        raise HTTPException(status_code=404, detail="Short link not found or expired")
+        raise HTTPException(
+            status_code=404,
+            detail={"message": "Short link not found or expired"}
+        )
 
     return ShortResponse(short_code=short_code)
 
 
 
 @router.get("/{short_code}/stats", response_model=LinkInfoResponse)
+@cache(
+    expire=600,
+    namespace="stats",
+    key_builder=lambda *args, **kwargs: get_stats_cache_key(kwargs['short_code']),
+    unless=lambda response: response.cnt_usage <= 10
+)
 async def get_link_info(
     short_code: str,
     session: AsyncSession = Depends(get_async_session)

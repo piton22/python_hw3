@@ -30,8 +30,8 @@ def test_shorten(url, alias, expires_at, project_name):
     
 
 test_shorten("https://hse.ru/", 'hse', expires_at=None, project_name=None)
-test_shorten("https://msu.ru/", 'msu', expires_at=(datetime.utcnow() + timedelta(hours=3) + timedelta(minutes=5)).isoformat(), project_name='MSU_Project')
-test_shorten("https://muctr.ru/", alias=None, expires_at=(datetime.utcnow() + timedelta(hours=3) + timedelta(minutes=100)).isoformat(), project_name='MUCTR_Project')
+test_shorten("https://msu.ru/", 'msu', expires_at=(datetime.utcnow() + timedelta(hours=3) + timedelta(minutes=1)).isoformat(), project_name='MSU_Project')
+test_shorten("https://muctr.ru/", alias=None, expires_at=(datetime.utcnow() + timedelta(hours=3) + timedelta(minutes=1)).isoformat(), project_name='MUCTR_Project')
 test_shorten("https://hse.ru/", 'hse2', expires_at=(datetime.utcnow() + timedelta(hours=3)  + timedelta(minutes=1)).isoformat(), project_name=None)
 
 def test_redirect(short):
@@ -65,9 +65,17 @@ test_update('hse2', "https://hse.ru/updated_url/")
 
 
 def test_search(original_url):
-    # Тест поиска
     response = requests.get(f"{BASE_URL}/search", params={"original_url": original_url})
-    print("Search Result:", response.json())
+    print(f"Status: {response.status_code}")
+    
+    try:
+        data = response.json()
+        if response.status_code == 200:
+            print("Search Result:", data)
+        else:
+            print("Error details:", data)
+    except:
+        print("Invalid JSON response:", response.text)
 
 test_search('http://muctr.ru/')
 test_search('https://muctr.ru')

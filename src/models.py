@@ -21,14 +21,14 @@ class Link(Base):
     project = relationship("Project", back_populates="project_links")
 
 
-class LinkUsage(Base):
-    __tablename__ = "link_usage"
+# class LinkUsage(Base):
+#     __tablename__ = "link_usage"
 
-    id = Column(Integer, primary_key=True)
-    link_id = Column(Integer, ForeignKey('links.id'))
-    dt = Column(TIMESTAMP, default=lambda: datetime.utcnow() + timedelta(hours=3)) 
+#     id = Column(Integer, primary_key=True)
+#     link_id = Column(Integer, ForeignKey('links.id'))
+#     dt = Column(TIMESTAMP, default=lambda: datetime.utcnow() + timedelta(hours=3)) 
 
-    link = relationship("Link", back_populates="usage")
+#     link = relationship("Link", back_populates="usage")
 
 
 class Project(Base):
