@@ -5,7 +5,7 @@ from sqlalchemy.sql import exists
 from fastapi import HTTPException, status, Path
 from fastapi.responses import RedirectResponse 
 import hashlib
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from database import get_async_session
 from models import Link, LinkUsage, Project
 
@@ -18,7 +18,7 @@ class ShortenRequest(BaseModel):
     url: str = Field(..., example="https://example.com")
     custom_alias: Optional[str] = Field(
         None,
-        min_length=4,
+        min_length=3,
         max_length=32,
         example="hse"
     )
@@ -74,9 +74,10 @@ async def make_short_link(
     request: ShortenRequest, 
     session: AsyncSession = Depends(get_async_session)
 ):
+    normalized_url = request.url.strip().rstrip("/").lower()
     # Проверка кастомного алиаса
     if request.custom_alias:
-        short_url = fr'/shrt/{request.custom_alias}'
+        short_url = request.custom_alias
         async with session.begin():
             alias_exists = await session.scalar(
                 select(Link).where(
@@ -92,7 +93,7 @@ async def make_short_link(
         # Генерация короткого кода
         for _ in range(5):
             short_hash = hashlib.sha256(request.url.encode()).hexdigest()[:6]
-            short_url = fr'/shrt/{short_hash}'
+            short_url = short_hash
             async with session.begin():
                 exists = await session.scalar(
                     select(Link).where(
@@ -116,7 +117,7 @@ async def make_short_link(
             if not project_obj:
                 project_obj = Project(
                     name=request.project,
-                    started_at=datetime.utcnow()
+                    started_at=datetime.utcnow() + timedelta(hours=3) 
                 )
                 session.add(project_obj)
                 await session.flush()
@@ -126,7 +127,7 @@ async def make_short_link(
     # Создание ссылки
     async with session.begin():
         new_link = Link(
-            url=request.url,
+            url=normalized_url,
             short=short_url,
             created_at=datetime.utcnow() + timedelta(hours=3) ,
             expires_at=request.expires_at,
@@ -142,53 +143,32 @@ async def make_short_link(
 
 @router.get("/{short_code}")
 async def get_info(
-    short_code: str = Path(..., 
-                         min_length=3,
-                         max_length=64),
+    short_code: str = Path(..., min_length=3, max_length=64),
     session: AsyncSession = Depends(get_async_session)
 ):
-    short_code_clean = short_code.lstrip('/')
-    short_code_norm = (
-        f"/{short_code_clean}" 
-        if short_code_clean.startswith('shrt/') 
-        else f"/shrt/{short_code_clean}"
-    )
-
-    try:
-        # Начать транзакцию
-        async with session.begin():
-            # Запрос и блокировка строки для обновления
-            result = await session.execute(
-                select(Link)
-                .where(
-                    and_(
-                        Link.short == short_code_norm,
-                        Link.deleted.is_(False),
-                        or_(
-                            Link.expires_at > (datetime.utcnow() + timedelta(hours=3)),
-                            Link.expires_at.is_(None)
-                        )
+    async with session.begin():
+        link = await session.scalar(
+            select(Link)
+            .where(
+                and_(
+                    Link.short == short_code,
+                    Link.deleted.is_(False),
+                    or_(
+                        Link.expires_at > (datetime.utcnow() + timedelta(hours=3)),
+                        Link.expires_at.is_(None)
                     )
                 )
-                .with_for_update()
             )
-            link = result.scalar()
-            
-            if not link:
-                raise HTTPException(404, "Short link not found or expired")
+            .with_for_update()
+        )
+        if not link:
+            raise HTTPException(status_code=404, detail="Short link not found or expired")
 
-            usage = LinkUsage(
-                link_id=link.id,
-                dt=(datetime.utcnow() + timedelta(hours=3)))
-            session.add(usage)
-
-            link.cnt_usage += 1
-            link.last_usage = datetime.utcnow() + timedelta(hours=3)
-
-    except Exception as e:
-        await session.rollback()
-        print(f"Error: {e}")
-        raise HTTPException(500, "Internal server error")
+        # Обновление данных
+        link.cnt_usage += 1
+        link.last_usage = datetime.utcnow() + timedelta(hours=3) 
+        usage = LinkUsage(link_id=link.id, dt=datetime.utcnow() + timedelta(hours=3))
+        session.add(usage)
 
     return RedirectResponse(link.url, status_code=307)
 
@@ -201,18 +181,11 @@ async def delete_short(
                          max_length=64),
     session: AsyncSession = Depends(get_async_session)
 ):
-
-    short_code_clean = short_code.lstrip('/')
-    
-    if short_code_clean.startswith('shrt/'):
-        short_code_norm = fr'/{short_code_clean}'
-    else:
-        short_code_norm = fr'/shrt/{short_code_clean}'
     
     exists_query = await session.scalar(
         select(1).where(
             and_(
-                Link.short == short_code_norm,
+                Link.short == short_code,
                 Link.deleted.is_(False)
         ))
     )
@@ -222,7 +195,7 @@ async def delete_short(
     
     await session.execute(
         update(Link)
-        .where(Link.short == short_code_norm)
+        .where(Link.short == short_code)
         .values(deleted=True)
     )
     await session.commit()
@@ -237,17 +210,12 @@ async def change_url(
     request_data: UpdateUrlRequest,
     session: AsyncSession = Depends(get_async_session)
     ):
-    short_code_clean = short_code.lstrip('/')
-
-    if short_code_clean.startswith('shrt/'):
-        short_code_norm = fr'/{short_code_clean}'
-    else:
-        short_code_norm = fr'/shrt/{short_code_clean}'
+    normalized_url = request_data.url.strip().rstrip("/").lower()
 
     code_exists = await session.scalar(
         select(exists().where(
             and_(
-                Link.short == short_code_norm,
+                Link.short == short_code,
                 Link.deleted.is_(False)
         )))
     )
@@ -257,8 +225,8 @@ async def change_url(
     
     stmt = (
         update(Link)
-        .where(Link.short == short_code_norm)
-        .values(url=request_data.url)
+        .where(Link.short == short_code)
+        .values(url=normalized_url)
         .execution_options(synchronize_session="fetch")
     )
     
@@ -276,23 +244,27 @@ async def search_short(
 ):
     normalized_url = query.original_url.strip().rstrip("/").lower()
 
-    stmt = select(
-        Link.short
-    ).where(
-        and_(
-            func.lower(func.replace(Link.url, '//', '/')).istartswith(normalized_url),
-            Link.deleted.is_(False),
-            or_(Link.expires_at > (datetime.utcnow() + timedelta(hours=3)), Link.expires_at.is_(None))
+    stmt = (
+        select(Link.short)
+        .where(
+            and_(
+                Link.url == normalized_url,
+                Link.deleted.is_(False),
+                or_(
+                    Link.expires_at > (datetime.utcnow() + timedelta(hours=3)),
+                    Link.expires_at.is_(None)
+                )
+            )
         )
-    )
+        .limit(1))
 
     result = await session.execute(stmt)
-    link_data = result.scalar_one_or_none()
+    short_code = result.scalar_one_or_none()
 
-    if not link_data:
-        raise HTTPException(404, "Short link not found or expired")
+    if not short_code:
+        raise HTTPException(status_code=404, detail="Short link not found or expired")
 
-    return ShortResponse(short_code=link_data)
+    return ShortResponse(short_code=short_code)
 
 
 
@@ -301,12 +273,7 @@ async def get_link_info(
     short_code: str,
     session: AsyncSession = Depends(get_async_session)
 ):
-    short_code_clean = short_code.lstrip('/')
-    short_code_norm = (
-        f"/{short_code_clean}" 
-        if short_code_clean.startswith('shrt/') 
-        else f"/shrt/{short_code_clean}"
-    )
+
 
     async with session.begin():
         result = await session.execute(
@@ -321,7 +288,7 @@ async def get_link_info(
             )
             .outerjoin(Project, Link.project_id == Project.id)
             .where(
-                    Link.short == short_code_norm,
+                    Link.short == short_code,
             )
         )
         

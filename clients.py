@@ -1,9 +1,13 @@
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 BASE_URL = "http://localhost:9999/links"
 
 def test_shorten(url, alias, expires_at, project_name):
+    # Конвертируем expires_at в строку, если он не None
+    if expires_at is not None and isinstance(expires_at, datetime):
+        expires_at = expires_at.isoformat()
+    
     data = {
         "url": url,
         "custom_alias": alias,
@@ -25,17 +29,16 @@ def test_shorten(url, alias, expires_at, project_name):
             print("Response content:", e.response.text)
     
 
-test_shorten("https://hse.ru/", 'hse', None, None)
-test_shorten("https://msu.ru/", 'msu', (datetime.utcnow() + timedelta(hours=3) + timedelta(minutes=5)).isoformat(), 'MSU_Project')
-test_shorten("https://muctr.ru/", alias=None, expires_at=(datetime.utcnow() + timedelta(hours=3) + timedelta(minutes=10)).isoformat(), project_name='MUCTR_Project')
-test_shorten("https://hse.ru/", 'hse2', expires_at=(datetime.utcnow()+ timedelta(hours=3) + timedelta(minutes=1)).isoformat(), project_name=None)
+test_shorten("https://hse.ru/", 'hse', expires_at=None, project_name=None)
+test_shorten("https://msu.ru/", 'msu', expires_at=(datetime.utcnow() + timedelta(hours=3) + timedelta(minutes=5)).isoformat(), project_name='MSU_Project')
+test_shorten("https://muctr.ru/", alias=None, expires_at=(datetime.utcnow() + timedelta(hours=3) + timedelta(minutes=100)).isoformat(), project_name='MUCTR_Project')
+test_shorten("https://hse.ru/", 'hse2', expires_at=(datetime.utcnow() + timedelta(hours=3)  + timedelta(minutes=1)).isoformat(), project_name=None)
 
 def test_redirect(short):
     response = requests.get(f"{BASE_URL}/{short}", allow_redirects=False)
     print(f"Status: {response.status_code}, Location: {response.headers.get('Location')}")
 
 
-test_redirect('/shrt/hse')
 test_redirect('hse')
 test_redirect('msu')
 test_redirect('hse2')
@@ -48,7 +51,6 @@ def test_delete(alias):
     print("Delete Result:", response.json())
 
 test_delete('msu')
-test_delete('/shrt/hse2') 
 
 
 def test_update(alias, new_url):
@@ -60,7 +62,6 @@ def test_update(alias, new_url):
 
 
 test_update('hse2', "https://hse.ru/updated_url/")
-test_update('/shrt/hse2', "https://hse.ru/updated_url_2/")
 
 
 def test_search(original_url):
@@ -68,9 +69,11 @@ def test_search(original_url):
     response = requests.get(f"{BASE_URL}/search", params={"original_url": original_url})
     print("Search Result:", response.json())
 
-test_search('https://muctr.ru/')
+test_search('http://muctr.ru/')
+test_search('https://muctr.ru')
+test_search('https://hse.ru/updated_url')
+test_search('https://hse.ru')
 
-test_redirect('/shrt/hse')
 test_redirect('hse')
 test_redirect('msu')
 test_redirect('hse2')
@@ -86,68 +89,3 @@ def test_get_stat(short):
         print("Error:", response.text)
 
 test_get_stat('hse')
-
-
-
-
-
-# def test_shorten():
-#     # Тест создания короткой ссылки
-#     data = {
-#         "url": TEST_URL,
-#         "custom_alias": CUSTOM_ALIAS,
-#         "expires_at": (datetime.now() + timedelta(days=7)).isoformat(),
-#         "project": PROJECT_NAME
-#     }
-    
-#     response = requests.post(f"{BASE_URL}/shorten", json=data)
-#     print("Shorten Response:", response.json())
-
-# def test_redirect():
-#     # Тест редиректа
-#     short_code = CUSTOM_ALIAS  # или сгенерированный код
-#     response = requests.get(f"{BASE_URL}/{short_code}", allow_redirects=False)
-    
-#     print(f"Redirect Status: {response.status_code}")
-#     print(f"Location Header: {response.headers.get('Location')}")
-
-# def test_search():
-#     # Тест поиска
-#     response = requests.get(f"{BASE_URL}/search", params={"original_url": TEST_URL})
-#     print("Search Result:", response.json())
-
-# def test_update():
-#     # Тест обновления URL
-#     new_url = "https://new-example.com"
-#     response = requests.put(
-#         f"{BASE_URL}/{CUSTOM_ALIAS}",
-#         json={"url": new_url}
-#     )
-#     print("Update Result:", response.json())
-
-# def test_delete():
-#     # Тест удаления
-#     response = requests.delete(f"{BASE_URL}/{CUSTOM_ALIAS}")
-#     print("Delete Result:", response.json())
-
-# # def test_all():
-#     try:
-#         print("Testing Shorten:")
-#         test_shorten()
-        
-#         print("\nTesting Redirect:")
-#         test_redirect()
-        
-#         print("\nTesting Search:")
-#         test_search()
-        
-#         print("\nTesting Update:")
-#         test_update()
-        
-#         print("\nTesting Delete:")
-#         test_delete()
-        
-#     except Exception as e:
-#         print(f"Test Failed: {str(e)}")
-
-# test_all()
