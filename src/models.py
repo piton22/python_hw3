@@ -9,8 +9,10 @@ class Link(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     url = Column(String, nullable=False)
-    short = Column(String, nullable=False, unique=True)  
+    short = Column(String, nullable=False, unique=True, index=True)  
     created_at = Column(TIMESTAMP, default=datetime.utcnow) 
+    last_usage = Column(TIMESTAMP, nullable=True)
+    cnt_usage = Column(Integer, default=0)
     expires_at = Column(TIMESTAMP, nullable=True)
     project_id = Column(Integer, ForeignKey('projects.id'))
     deleted = Column(Boolean, default=False)

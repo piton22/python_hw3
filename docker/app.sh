@@ -1,7 +1,8 @@
 #!/bin/bash
 
-
-# alembic upgrade head
+# rm -rf alembic/versions/*
+# alembic revision --autogenerate -m "init_tables"
+alembic upgrade head
 
 cd src
 
