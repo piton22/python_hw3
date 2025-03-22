@@ -17,7 +17,7 @@ class Link(Base):
     project_id = Column(Integer, ForeignKey('projects.id'))
     deleted = Column(Boolean, default=False)
 
-    usage = relationship("LinkUsage", back_populates="link", cascade="all, delete-orphan")
+    # usage = relationship("LinkUsage", back_populates="link", cascade="all, delete-orphan")
     project = relationship("Project", back_populates="project_links")
 
 

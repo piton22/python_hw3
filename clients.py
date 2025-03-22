@@ -27,31 +27,23 @@ def test_shorten(url, alias, expires_at, project_name):
         print(f"Shorten Error: {str(e)}")
         if e.response:
             print("Response content:", e.response.text)
-    
 
-test_shorten("https://hse.ru/", 'hse', expires_at=None, project_name=None)
-test_shorten("https://msu.ru/", 'msu', expires_at=(datetime.utcnow() + timedelta(hours=3) + timedelta(minutes=1)).isoformat(), project_name='MSU_Project')
-test_shorten("https://muctr.ru/", alias=None, expires_at=(datetime.utcnow() + timedelta(hours=3) + timedelta(minutes=1)).isoformat(), project_name='MUCTR_Project')
-test_shorten("https://hse.ru/", 'hse2', expires_at=(datetime.utcnow() + timedelta(hours=3)  + timedelta(minutes=1)).isoformat(), project_name=None)
+def test_get_stat(short):
+    response = requests.get(f"{BASE_URL}/{short}/stats")
+    print(f"Status: {response.status_code}")
+    if response.status_code == 200:
+        print("Search Result:", response.json())
+    else:
+        print("Error:", response.text)
 
 def test_redirect(short):
     response = requests.get(f"{BASE_URL}/{short}", allow_redirects=False)
     print(f"Status: {response.status_code}, Location: {response.headers.get('Location')}")
 
-
-test_redirect('hse')
-test_redirect('msu')
-test_redirect('hse2')
-test_redirect('hse')
-test_redirect('hse')
-
 def test_delete(alias):
     # Тест удаления
     response = requests.delete(f"{BASE_URL}/{alias}")
     print("Delete Result:", response.json())
-
-test_delete('msu')
-
 
 def test_update(alias, new_url):
     response = requests.put(
@@ -59,10 +51,6 @@ def test_update(alias, new_url):
         json={"url": new_url}
     )
     print("Update Result:", response.json())
-
-
-test_update('hse2', "https://hse.ru/updated_url/")
-
 
 def test_search(original_url):
     response = requests.get(f"{BASE_URL}/search", params={"original_url": original_url})
@@ -77,10 +65,14 @@ def test_search(original_url):
     except:
         print("Invalid JSON response:", response.text)
 
-test_search('http://muctr.ru/')
-test_search('https://muctr.ru')
-test_search('https://hse.ru/updated_url')
-test_search('https://hse.ru')
+    
+
+test_shorten("https://hse.ru/", 'hse', expires_at=None, project_name=None)
+test_shorten("https://msu.ru/", 'msu', expires_at=(datetime.utcnow() + timedelta(hours=3) + timedelta(minutes=1)).isoformat(), project_name='MSU_Project')
+test_shorten("https://muctr.ru/", alias=None, expires_at=(datetime.utcnow() + timedelta(hours=3) + timedelta(minutes=1)).isoformat(), project_name='MUCTR_Project')
+test_shorten("https://hse.ru/", 'hse2', expires_at=(datetime.utcnow() + timedelta(hours=3)  + timedelta(minutes=1)).isoformat(), project_name=None)
+
+
 
 test_redirect('hse')
 test_redirect('msu')
@@ -88,12 +80,18 @@ test_redirect('hse2')
 test_redirect('hse')
 test_redirect('hse')
 
-def test_get_stat(short):
-    response = requests.get(f"{BASE_URL}/{short}/stats")
-    print(f"Status: {response.status_code}")
-    if response.status_code == 200:
-        print("Search Result:", response.json())
-    else:
-        print("Error:", response.text)
+test_delete('msu')
+
+test_update('hse2', "https://hse.ru/updated_url/")
+
+
+test_search('http://muctr.ru/')
+
+test_redirect('hse')
+test_redirect('msu')
+test_redirect('hse2')
+test_redirect('hse')
+test_redirect('hse')
+
 
 test_get_stat('hse')

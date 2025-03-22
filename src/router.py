@@ -1,83 +1,35 @@
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select, insert, and_, update, or_, func
+from datetime import datetime, timedelta
+import hashlib
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Path
+from fastapi.responses import RedirectResponse
+from pydantic import BaseModel, Field
+from redis.asyncio import Redis
+from sqlalchemy import and_, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import exists
-from fastapi import HTTPException, status, Path
-from fastapi.responses import RedirectResponse 
-import hashlib
-from datetime import datetime, timedelta, timezone
+
 from database import get_async_session
-# from models import Link, LinkUsage, Project
 from models import Link, Project
-from pydantic import BaseModel, Field, constr
-from typing import Optional
-from fastapi_cache.decorator import cache
-from fastapi_cache import FastAPICache
-from redis import asyncio as aioredis
-# from fastapi_cache.backends.redis import RedisCacheBackend
+from schemas import ShortenRequest, UpdateUrlRequest, LinkInfoResponse, StatusResponse, SearchQuery, ShortResponse
 from src.config import REDIS_HOST, REDIS_PORT
 
-
-class ShortenRequest(BaseModel):
-    url: str = Field(..., example="https://example.com")
-    custom_alias: Optional[str] = Field(
-        None,
-        min_length=3,
-        max_length=32,
-        example="hse"
-    )
-    expires_at: Optional[datetime] = Field(
-        None,
-        example="2024-01-01T00:00:00"
-    )
-    project: Optional[str] = Field(
-        None,
-        max_length=50,
-        example="marketing"
-    )
-
-class UpdateUrlRequest(BaseModel):
-    url: str
-
-
-class LinkInfoResponse(BaseModel):
-    url: str
-    created_at: datetime
-    last_usage: datetime | None
-    cnt_usage: int = Field(..., ge=0)
-    project_name: str | None
-    is_active: bool
-
-
-class StatusResponse(BaseModel):
-    status: str
-    message: str
-
-class SearchQuery(BaseModel):
-    original_url: str = Field(
-        ...,
-        min_length=3,
-        max_length=2048,
-        example="https://example.com/page"
-    )
-class ShortResponse(BaseModel):
-    short_code: str = Field(..., 
-                          example="abc123",
-                          min_length=3,
-                          max_length=64)
     
+# def get_cache_key(short_code: str):
+#     return f"link:{short_code}"
 
+# def get_stats_cache_key(short_code: str):
+#     return f"stats:{short_code}"
 
-def get_cache_key(short_code: str):
-    return f"link:{short_code}"
-
-def get_stats_cache_key(short_code: str):
-    return f"stats:{short_code}"
 
 router = APIRouter(
     prefix="/links",
     tags=["Links"]
 )
+
+async def get_redis() -> Redis:
+    return Redis.from_url(f"redis://{REDIS_HOST}:{REDIS_PORT}")
 
 @router.post("/shorten", response_model = ShortResponse)
 async def make_short_link(
@@ -150,19 +102,15 @@ async def make_short_link(
     return ShortResponse(short_code=short_url)
 
 
-
 @router.get("/{short_code}", response_class=RedirectResponse)
-@cache(
-    expire=300,
-    namespace="redirects",
-    key_builder=lambda *args, **kwargs: get_cache_key(kwargs['short_code']),
-    unless=lambda response: response.cnt_usage <= 10
-)
 async def get_info(
     short_code: str = Path(..., min_length=3, max_length=64),
-    session: AsyncSession = Depends(get_async_session)
+    session: AsyncSession = Depends(get_async_session),
+    redis: Redis = Depends(get_redis)
 ):
-    redis = aioredis.from_url(f"redis://{REDIS_HOST}:{REDIS_PORT}")
+    cached_url = await redis.get(f"redirect:{short_code}")
+    if cached_url:
+        return RedirectResponse(cached_url.decode(), status_code=307)
 
     link = await session.scalar(
         select(Link)
@@ -185,17 +133,22 @@ async def get_info(
     await redis.hset(f"link_stats:{short_code}", "last_used", (datetime.utcnow() + timedelta(hours=3)).isoformat())
     await redis.expire(f"link_stats:{short_code}", 3600)
 
+    if link.cnt_usage > 10:
+        await redis.setex(
+            f"redirect:{short_code}", 
+            600,  
+            link.url
+        )
+
     return RedirectResponse(link.url, status_code=307)
 
 
 @router.delete("/{short_code}", response_model=StatusResponse)
 async def delete_short(
-    short_code: str = Path(..., 
-                         min_length=3,
-                         max_length=64),
-    session: AsyncSession = Depends(get_async_session)
+    short_code: str = Path(..., min_length=3, max_length=64),
+    session: AsyncSession = Depends(get_async_session),
+    redis: Redis = Depends(get_redis)  
 ):
-    
     exists_query = await session.scalar(
         select(1).where(
             and_(
@@ -213,19 +166,23 @@ async def delete_short(
         .values(deleted=True)
     )
     await session.commit()
-    redis_cache = FastAPICache.get_cache_backend()
-    await redis_cache.delete(get_cache_key(short_code))
-    await redis_cache.delete(get_stats_cache_key(short_code))
     
-    return StatusResponse(status="success",
-                          message= "Link has been deleted")
+    # Удаляем кэш
+    await redis.delete(f"redirect:{short_code}")  
+    await redis.delete(f"stats:{short_code}")    
+    
+    return StatusResponse(
+        status="success",
+        message="Link has been deleted"
+    )
 
 
 @router.put("/{short_code}", response_model=StatusResponse)
 async def change_url(
     short_code: str,
     request_data: UpdateUrlRequest,
-    session: AsyncSession = Depends(get_async_session)
+    session: AsyncSession = Depends(get_async_session),
+    redis: Redis = Depends(get_redis)
     ):
     normalized_url = request_data.url.strip().rstrip("/").lower()
 
@@ -250,12 +207,15 @@ async def change_url(
     await session.execute(stmt)
     await session.commit()
 
-    redis_cache = FastAPICache.get_cache_backend()
-    await redis_cache.delete(get_cache_key(short_code))
-    await redis_cache.delete(get_stats_cache_key(short_code))
+    # Удаляем кэш
+    await redis.delete(f"redirect:{short_code}")  
+    await redis.delete(f"stats:{short_code}")  
     
-    return StatusResponse(status="success",
-                          message= "Url has been updated")
+    return StatusResponse(
+        status="success",
+        message="Url has been updated"
+    )
+
 
 
 @router.get("/search", response_model=ShortResponse)
@@ -292,19 +252,18 @@ async def search_short(
     return ShortResponse(short_code=short_code)
 
 
-
 @router.get("/{short_code}/stats", response_model=LinkInfoResponse)
-@cache(
-    expire=600,
-    namespace="stats",
-    key_builder=lambda *args, **kwargs: get_stats_cache_key(kwargs['short_code']),
-    unless=lambda response: response.cnt_usage <= 10
-)
 async def get_link_info(
     short_code: str,
-    session: AsyncSession = Depends(get_async_session)
+    session: AsyncSession = Depends(get_async_session),
+    redis: Redis = Depends(get_redis)
 ):
 
+    cache_key = f"stats:{short_code}"
+    cached_data = await redis.get(cache_key)
+    
+    if cached_data:
+        return LinkInfoResponse.parse_raw(cached_data)
 
     async with session.begin():
         result = await session.execute(
@@ -318,26 +277,22 @@ async def get_link_info(
                 Link.expires_at
             )
             .outerjoin(Project, Link.project_id == Project.id)
-            .where(
-                    Link.short == short_code,
-            )
+            .where(Link.short == short_code)
         )
         
         row = result.first()
         if not row:
             raise HTTPException(status_code=404, detail="Link not found")
 
-
         (url, created_at, last_usage, cnt_usage, 
          project_name, deleted, expires_at) = row
-
 
         is_active = not deleted and (
             expires_at is None or 
             expires_at > (datetime.utcnow() + timedelta(hours=3))
         )
 
-        return LinkInfoResponse(
+        response = LinkInfoResponse(
             url=url,
             created_at=created_at,
             last_usage=last_usage,
@@ -345,3 +300,12 @@ async def get_link_info(
             project_name=project_name,
             is_active=is_active
         )
+
+        if cnt_usage > 10:
+            await redis.setex(
+                cache_key,
+                600,
+                response.json()
+            )
+
+        return response
