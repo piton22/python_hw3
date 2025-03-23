@@ -13,6 +13,7 @@ Session = sessionmaker(bind=engine)
 @shared_task
 def check_and_deactivate_links():
     session = Session()
+    redis_conn = redis.Redis(host=REDIS_HOST, port=REDIS_PORT)
     try:
         now = datetime.utcnow() + timedelta(hours=3)
         three_days_ago = now - timedelta(days=3)
@@ -31,14 +32,29 @@ def check_and_deactivate_links():
             )
         )
 
-        stmt = update(Link).where(condition).values(deleted=True)
-        session.execute(stmt)
+        # Обновляем записи и получаем short_code деактивированных ссылок
+        stmt = (
+            update(Link)
+            .where(condition)
+            .values(deleted=True)
+            .returning(Link.short)
+        )
+        result = session.execute(stmt)
+        short_codes = [row[0] for row in result]
         session.commit()
+
+        # Удаляем связанные ключи в Redis
+        for code in short_codes:
+            redis_conn.delete(f"redirect:{code}")
+            redis_conn.delete(f"link_stats:{code}")
+            redis_conn.delete(f"stats:{code}")
+
     except Exception as e:
         session.rollback()
         raise e
     finally:
         session.close()
+        redis_conn.close()
 
 
 @shared_task

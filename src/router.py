@@ -15,13 +15,6 @@ from models import Link, Project
 from schemas import ShortenRequest, UpdateUrlRequest, LinkInfoResponse, StatusResponse, SearchQuery, ShortResponse
 from src.config import REDIS_HOST, REDIS_PORT
 
-    
-# def get_cache_key(short_code: str):
-#     return f"link:{short_code}"
-
-# def get_stats_cache_key(short_code: str):
-#     return f"stats:{short_code}"
-
 
 router = APIRouter(
     prefix="/links",
