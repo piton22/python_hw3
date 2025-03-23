@@ -1,10 +1,10 @@
 import requests
 from datetime import datetime, timedelta, timezone
 
-BASE_URL = "http://localhost:9999/links"
+BASE_URL_LINKS = "http://localhost:9999/links"
+BASE_URL_PROJECTS = "http://localhost:9999/projects"
 
 def test_shorten(url, alias, expires_at, project_name):
-    # Конвертируем expires_at в строку, если он не None
     if expires_at is not None and isinstance(expires_at, datetime):
         expires_at = expires_at.isoformat()
     
@@ -17,7 +17,7 @@ def test_shorten(url, alias, expires_at, project_name):
     
     try:
         response = requests.post(
-            f"{BASE_URL}/shorten",
+            f"{BASE_URL_LINKS}/shorten",
             json=data,
             timeout=5
         )
@@ -29,7 +29,7 @@ def test_shorten(url, alias, expires_at, project_name):
             print("Response content:", e.response.text)
 
 def test_get_stat(short):
-    response = requests.get(f"{BASE_URL}/{short}/stats")
+    response = requests.get(f"{BASE_URL_LINKS}/{short}/stats")
     print(f"Status: {response.status_code}")
     if response.status_code == 200:
         print("Search Result:", response.json())
@@ -37,23 +37,22 @@ def test_get_stat(short):
         print("Error:", response.text)
 
 def test_redirect(short):
-    response = requests.get(f"{BASE_URL}/{short}", allow_redirects=False)
+    response = requests.get(f"{BASE_URL_LINKS}/{short}", allow_redirects=False)
     print(f"Status: {response.status_code}, Location: {response.headers.get('Location')}")
 
 def test_delete(alias):
-    # Тест удаления
-    response = requests.delete(f"{BASE_URL}/{alias}")
+    response = requests.delete(f"{BASE_URL_LINKS}/{alias}")
     print("Delete Result:", response.json())
 
 def test_update(alias, new_url):
     response = requests.put(
-        f"{BASE_URL}/{alias}",
+        f"{BASE_URL_LINKS}/{alias}",
         json={"url": new_url}
     )
     print("Update Result:", response.json())
 
 def test_search(original_url):
-    response = requests.get(f"{BASE_URL}/search", params={"original_url": original_url})
+    response = requests.get(f"{BASE_URL_LINKS}/search", params={"original_url": original_url})
     print(f"Status: {response.status_code}")
     
     try:
@@ -68,17 +67,24 @@ def test_search(original_url):
 
 def test_deleted():
 
-    # Тестируем получение удаленных
-    response = requests.get(f"{BASE_URL}/deleted")
+    response = requests.get(f"{BASE_URL_LINKS}/deleted")
     print(f"Status: {response.status_code}")
     if response.status_code == 200:
         print("Deleted Result:", response.json())
 
+def test_project_stats(project_name):
+    response = requests.get(f"{BASE_URL_PROJECTS}/{project_name}/stats")
+    print(f"Status: {response.status_code}")
+    if response.status_code == 200:
+        print("Project Stats:", response.json())
+    else:
+        print("Error:", response.text)
+
     
 
 test_shorten("https://hse.ru/", 'hse', expires_at=None, project_name=None)
-test_shorten("https://msu.ru/", 'msu', expires_at=(datetime.utcnow() + timedelta(hours=3) + timedelta(minutes=1)).isoformat(), project_name='MSU_Project')
-test_shorten("https://muctr.ru/", alias=None, expires_at=(datetime.utcnow() + timedelta(hours=3) + timedelta(minutes=1)).isoformat(), project_name='MUCTR_Project')
+test_shorten("https://msu.ru/", 'msu', expires_at=(datetime.utcnow() + timedelta(hours=3) + timedelta(minutes=1)).isoformat(), project_name='University')
+test_shorten("https://muctr.ru/", alias=None, expires_at=(datetime.utcnow() + timedelta(hours=3) + timedelta(minutes=1)).isoformat(), project_name='University')
 test_shorten("https://hse.ru/", 'hse2', expires_at=(datetime.utcnow() + timedelta(hours=3)  + timedelta(minutes=1)).isoformat(), project_name=None)
 
 
@@ -106,3 +112,5 @@ test_redirect('hse')
 test_get_stat('hse')
 
 test_deleted()
+
+test_project_stats("University")

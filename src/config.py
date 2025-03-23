@@ -12,12 +12,3 @@ DB_NAME = os.getenv("DB_NAME")
 
 REDIS_HOST = os.getenv("REDIS_HOST")
 REDIS_PORT = os.getenv("REDIS_PORT")
-
-
-# SECRET = "YOUR_SECRET_HERE"
-
-# DB_USER = 'python_hw3'
-# DB_PASS = 'python_hw3'
-# DB_HOST = 'localhost'
-# DB_PORT = 5432
-# DB_NAME = 'python_hw3'

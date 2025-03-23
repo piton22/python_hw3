@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from sqlalchemy import Column, String, TIMESTAMP, Boolean, Integer, ForeignKey
 from sqlalchemy.orm import declarative_base, relationship
 
@@ -17,18 +17,7 @@ class Link(Base):
     project_id = Column(Integer, ForeignKey('projects.id'))
     deleted = Column(Boolean, default=False)
 
-    # usage = relationship("LinkUsage", back_populates="link", cascade="all, delete-orphan")
     project = relationship("Project", back_populates="project_links")
-
-
-# class LinkUsage(Base):
-#     __tablename__ = "link_usage"
-
-#     id = Column(Integer, primary_key=True)
-#     link_id = Column(Integer, ForeignKey('links.id'))
-#     dt = Column(TIMESTAMP, default=lambda: datetime.utcnow() + timedelta(hours=3)) 
-
-#     link = relationship("Link", back_populates="usage")
 
 
 class Project(Base):

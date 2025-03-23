@@ -1,10 +1,8 @@
 from datetime import datetime, timedelta
 import hashlib
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Path
 from fastapi.responses import RedirectResponse
-from pydantic import BaseModel, Field
 from redis.asyncio import Redis
 from sqlalchemy import and_, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession

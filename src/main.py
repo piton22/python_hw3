@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from router import router
-from redis import asyncio as aioredis
+from projects_router import projects_router
 from redis.asyncio import Redis
 from fastapi_cache import FastAPICache
 from fastapi_cache.backends.redis import RedisBackend
@@ -19,8 +19,9 @@ async def startup():
         decode_responses=True
     )
     FastAPICache.init(RedisBackend(redis), prefix="fastapi-cache")
-    
+
 app.include_router(router)
+app.include_router(projects_router)
 
 
 if __name__ == "__main__":

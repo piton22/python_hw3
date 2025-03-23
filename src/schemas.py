@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 from typing import Optional
-from datetime import datetime, timedelta
+from datetime import datetime
 
 class ShortenRequest(BaseModel):
     url: str = Field(..., example="https://example.com")
@@ -57,4 +57,12 @@ class ShortResponse(BaseModel):
                           example="abc123",
                           min_length=3,
                           max_length=64)
+    
+class ProjectStatsResponse(BaseModel):
+    name: str
+    started_at: datetime
+    finished_at: datetime | None
+    total_links: int = Field(..., ge=0)
+    active_links: int = Field(..., ge=0)
+    total_clicks: int = Field(..., ge=0)
     
