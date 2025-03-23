@@ -12,7 +12,7 @@ from sqlalchemy.sql import exists
 
 from database import get_async_session
 from models import Link, Project
-from schemas import ShortenRequest, UpdateUrlRequest, LinkInfoResponse, StatusResponse, SearchQuery, ShortResponse
+from schemas import ShortenRequest, UpdateUrlRequest, LinkInfoResponse, StatusResponse, SearchQuery, ShortResponse, LinkDeletedResponse
 from src.config import REDIS_HOST, REDIS_PORT
 
 
@@ -94,6 +94,42 @@ async def make_short_link(
     
     return ShortResponse(short_code=short_url)
 
+@router.get("/deleted", response_model=list[LinkDeletedResponse])
+async def get_deleted_links(
+    session: AsyncSession = Depends(get_async_session)
+):
+    result = await session.execute(
+    select(
+        Link.url,
+        Link.short,
+        Link.created_at,
+        Link.last_usage,
+        Link.cnt_usage,
+        Project.name
+    )
+        .outerjoin(Project, Link.project_id == Project.id)
+        .where(Link.deleted.is_(True))
+    )
+    
+    links = result.all()
+    
+    response = []
+    for link in links:
+        (url, short, created_at, last_usage, cnt_usage, 
+         project_name) = link
+
+        
+        response.append(LinkDeletedResponse(
+            url=url,
+            short=short,
+            created_at=created_at,
+            last_usage=last_usage,
+            cnt_usage=cnt_usage,
+            project_name=project_name
+        ))
+    
+    return response
+    
 
 @router.get("/{short_code}", response_class=RedirectResponse)
 async def get_info(

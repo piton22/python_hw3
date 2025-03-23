@@ -65,6 +65,15 @@ def test_search(original_url):
     except:
         print("Invalid JSON response:", response.text)
 
+
+def test_deleted():
+
+    # Тестируем получение удаленных
+    response = requests.get(f"{BASE_URL}/deleted")
+    print(f"Status: {response.status_code}")
+    if response.status_code == 200:
+        print("Deleted Result:", response.json())
+
     
 
 test_shorten("https://hse.ru/", 'hse', expires_at=None, project_name=None)
@@ -95,3 +104,5 @@ test_redirect('hse')
 
 
 test_get_stat('hse')
+
+test_deleted()

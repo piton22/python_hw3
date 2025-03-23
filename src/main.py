@@ -19,6 +19,7 @@ async def startup():
         decode_responses=True
     )
     FastAPICache.init(RedisBackend(redis), prefix="fastapi-cache")
+    
 app.include_router(router)
 
 

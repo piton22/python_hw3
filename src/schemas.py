@@ -32,6 +32,14 @@ class LinkInfoResponse(BaseModel):
     project_name: str | None
     is_active: bool
 
+class LinkDeletedResponse(BaseModel):
+    url: str
+    short: str
+    created_at: datetime
+    last_usage: datetime | None
+    cnt_usage: int = Field(..., ge=0)
+    project_name: str | None
+
 
 class StatusResponse(BaseModel):
     status: str
