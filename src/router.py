@@ -1,16 +1,16 @@
 from datetime import datetime, timedelta
 import hashlib
 
-from fastapi import APIRouter, Depends, HTTPException, Path
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from fastapi.responses import RedirectResponse
 from redis.asyncio import Redis
 from sqlalchemy import and_, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import exists
 
-from database import get_async_session
-from models import Link, Project
-from schemas import ShortenRequest, UpdateUrlRequest, LinkInfoResponse, StatusResponse, SearchQuery, ShortResponse, LinkDeletedResponse
+from src.database import get_async_session
+from src.models import Link, Project
+from src.schemas import ShortenRequest, UpdateUrlRequest, LinkInfoResponse, StatusResponse, SearchQuery, ShortResponse, LinkDeletedResponse
 from src.config import REDIS_HOST, REDIS_PORT
 
 
@@ -244,14 +244,17 @@ async def change_url(
     )
 
 
-
 @router.get("/search", response_model=ShortResponse)
 async def search_short(
-    query: SearchQuery = Depends(),
+    original_url: str = Query(...,
+                           min_length=1, 
+                           example="https://example.com",
+                           alias="original_url"
+                          ),
     session: AsyncSession = Depends(get_async_session)
 ):
-    normalized_url = query.original_url.strip().rstrip("/").lower()
-
+    normalized_url = original_url.strip().rstrip("/").lower()
+    
     stmt = (
         select(Link.short)
         .where(
@@ -266,16 +269,13 @@ async def search_short(
         )
         .limit(1)
     )
-
+    
     result = await session.execute(stmt)
     short_code = result.scalar_one_or_none()
-
+    
     if not short_code:
-        raise HTTPException(
-            status_code=404,
-            detail={"message": "Short link not found or expired"}
-        )
-
+        raise HTTPException(status_code=404, detail="Short link not found or expired")
+    
     return ShortResponse(short_code=short_code)
 
 
