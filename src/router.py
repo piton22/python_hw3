@@ -92,6 +92,37 @@ async def make_short_link(
     
     return ShortResponse(short_code=short_url)
 
+@router.get("/search", response_model=ShortResponse)
+async def search_short(
+    original_url: str = Query(..., title="Original URL", example="https://example.com"),
+    session: AsyncSession = Depends(get_async_session)
+):
+    normalized_url = original_url.strip().rstrip("/").lower()
+    
+    stmt = (
+        select(Link.short)
+        .where(
+            and_(
+                Link.url == normalized_url,
+                Link.deleted.is_(False),
+                or_(
+                    Link.expires_at > (datetime.utcnow() + timedelta(hours=3)),
+                    Link.expires_at.is_(None)
+                )
+            )
+        )
+        .limit(1)
+    )
+    
+    result = await session.execute(stmt)
+    short_code = result.scalar_one_or_none()
+    
+    if not short_code:
+        raise HTTPException(status_code=404, detail="Short link not found or expired")
+    
+    return ShortResponse(short_code=short_code)
+
+
 @router.get("/deleted", response_model=list[LinkDeletedResponse])
 async def get_deleted_links(
     session: AsyncSession = Depends(get_async_session)
@@ -243,40 +274,6 @@ async def change_url(
         message="Url has been updated"
     )
 
-
-@router.get("/search", response_model=ShortResponse)
-async def search_short(
-    original_url: str = Query(...,
-                           min_length=1, 
-                           example="https://example.com",
-                           alias="original_url"
-                          ),
-    session: AsyncSession = Depends(get_async_session)
-):
-    normalized_url = original_url.strip().rstrip("/").lower()
-    
-    stmt = (
-        select(Link.short)
-        .where(
-            and_(
-                Link.url == normalized_url,
-                Link.deleted.is_(False),
-                or_(
-                    Link.expires_at > (datetime.utcnow() + timedelta(hours=3)),
-                    Link.expires_at.is_(None)
-                )
-            )
-        )
-        .limit(1)
-    )
-    
-    result = await session.execute(stmt)
-    short_code = result.scalar_one_or_none()
-    
-    if not short_code:
-        raise HTTPException(status_code=404, detail="Short link not found or expired")
-    
-    return ShortResponse(short_code=short_code)
 
 
 @router.get("/{short_code}/stats", response_model=LinkInfoResponse)

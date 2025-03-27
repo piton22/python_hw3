@@ -1,5 +1,5 @@
 import requests
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 BASE_URL_LINKS = "http://localhost:9999/links"
 BASE_URL_PROJECTS = "http://localhost:9999/projects"
@@ -84,7 +84,7 @@ def test_project_stats(project_name):
 
 test_shorten("https://hse.ru/", 'hse', expires_at=None, project_name=None)
 test_shorten("https://msu.ru/", 'msu', expires_at=(datetime.utcnow() + timedelta(hours=3) + timedelta(minutes=1)).isoformat(), project_name='University')
-test_shorten("https://muctr.ru/", alias=None, expires_at=(datetime.utcnow() + timedelta(hours=3) + timedelta(minutes=1)).isoformat(), project_name='University')
+test_shorten("https://muctr.ru/", alias=None, expires_at=(datetime.utcnow() + timedelta(hours=3) + timedelta(days=3)).isoformat(), project_name='University')
 test_shorten("https://hse.ru/", 'hse2', expires_at=(datetime.utcnow() + timedelta(hours=3)  + timedelta(minutes=1)).isoformat(), project_name=None)
 
 
@@ -114,3 +114,6 @@ test_get_stat('hse')
 test_deleted()
 
 test_project_stats("University")
+
+test_search('https://hse.ru/')
+test_search('https://muctr.ru/')
